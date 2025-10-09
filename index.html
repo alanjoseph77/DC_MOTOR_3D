@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CircuitLab - DC Motor Simulation</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    #container {
+      display: flex;
+      height: 100vh;
+      background: #1a1a1a;
+    }
+    #sidebar {
+      width: 250px;
+      background: #2a2a2a;
+      color: white;
+      padding: 10px;
+      overflow-y: auto;
+    }
+    #controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    #main-content {
+      flex: 1;
+      position: relative;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      width: 100%;
+      text-align: center;
+      color: white;
+      z-index: 10;
+    }
+    #part-info {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      background: rgba(0,0,0,0.7);
+      padding: 15px;
+      border-radius: 5px;
+      display: none;
+      max-width: 300px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .value-display {
+      font-size: 14px;
+      margin-top: 2px;
+    }
+    button {
+      padding: 8px;
+      background: #3a3a3a;
+      border: 1px solid #555;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #4a4a4a;
+    }
+    h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+    }
+    p {
+      margin: 0;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="sidebar">
+      <div id="controls">
+        <h3>DC Motor Controls</h3>
+        <label>
+          Supply Voltage (V):
+          <input type="range" id="voltage" min="0" max="24" step="0.1" value="12">
+          <span class="value-display" id="voltage-value">12V</span>
+        </label>
+        <label>
+          Load Torque (N·m):
+          <input type="range" id="load" min="0" max="5" step="0.1" value="1">
+          <span class="value-display" id="load-value">1 N·m</span>
+        </label>
+        <div id="rpm-display">0 RPM</div>
+        <div id="current-display">0 A</div>
+      </div>
+    </div>
+    <div id="main-content">
+      <div id="info">DC Motor Simulation</div>
+      <div id="part-info">
+        <h3 id="part-name">Part Name</h3>
+        <p id="part-description">Part description goes here.</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Main scene setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+
+    const camera = new THREE.PerspectiveCamera(75, (window.innerWidth - 250) / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 4, 12);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth - 250, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.getElementById('main-content').appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // Lights for main scene
+    const light1 = new THREE.DirectionalLight(0xffffff, 1);
+    light1.position.set(5, 10, 5);
+    scene.add(light1);
+
+    const light2 = new THREE.DirectionalLight(0xffffff, 0.5);
+    light2.position.set(-5, 5, -5);
+    scene.add(light2);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+
+    // Materials
+    const metal = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.3 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.7, roughness: 0.4 });
+    const red = new THREE.MeshStandardMaterial({ color: 0xcc0000, metalness: 0.5, roughness: 0.3 });
+    const connectorMaterial = new THREE.MeshStandardMaterial({ color: 0xD4AF37, metalness: 0.9, roughness: 0.1 });
+    const copper = new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: 0.9, roughness: 0.2 });
+    const commutatorPlateMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, metalness: 0.7, roughness: 0.3 });
+    const brushMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.5 });
+    const brushHolderMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6, roughness: 0.4 });
+
+    // Component groups with descriptions
+    const componentsInfo = {
+      shaft: { name: "Shaft", description: "Central rotating shaft that transfers mechanical power from the motor to the connected load." },
+      rotorCore: { name: "Rotor Core", description: "The rotating part of the motor consisting of laminated iron cores that carry the windings." },
+      windings: { name: "Copper Windings", description: "Coils of insulated copper wire that generate magnetic fields when current flows through them." },
+      commutator: { name: "Commutator", description: "Segmented cylinder with conductive segments on its surface that maintain electrical contact with the rotating armature through brushes." },
+      laminations: { name: "Laminations", description: "Thin steel sheets stacked together to reduce eddy current losses in the magnetic circuit." },
+      brushes: { name: "Brushes", description: "Carbon contacts that provide electrical connection to the rotating commutator." }
+    };
+
+    // Raycaster for part selection
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    const partInfoPanel = document.getElementById('part-info');
+    const partNameElement = document.getElementById('part-name');
+    const partDescriptionElement = document.getElementById('part-description');
+
+    const motorGroup = new THREE.Group();
+    scene.add(motorGroup);
+
+    const rotorGroup = new THREE.Group();
+    motorGroup.add(rotorGroup);
+
+    const statorGroup = new THREE.Group();
+    motorGroup.add(statorGroup);
+
+    // Shaft
+    const shaft = new THREE.Group();
+    const shaftMain = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 10, 32), metal);
+    shaftMain.rotation.x = Math.PI / 2;
+    shaft.add(shaftMain);
+    shaft.userData = { info: componentsInfo.shaft };
+    rotorGroup.add(shaft);
+
+    // Rotor Core
+    const rotorCore = new THREE.Group();
+    rotorCore.userData = { info: componentsInfo.rotorCore };
+
+    const lamCount = 28;
+    const lamThickness = 0.08;
+    const totalLength = lamCount * lamThickness;
+
+    function createCurvedRotorSegment(angle) {
+      const segmentGroup = new THREE.Group();
+      const curveRadius = 0.8;
+      const curveSegments = 12;
+      const arcLength = Math.PI * 0.5;
+
+      const points = [];
+      for (let i = 0; i <= curveSegments; i++) {
+        const theta = -arcLength / 2 + (arcLength) * (i / curveSegments);
+        const x = curveRadius * Math.cos(theta);
+        const y = curveRadius * Math.sin(theta);
+        points.push(new THREE.Vector2(x, y));
+      }
+
+      const innerRadius = 0.6;
+      for (let i = curveSegments; i >= 0; i--) {
+        const theta = -arcLength / 2 + (arcLength) * (i / curveSegments);
+        const x = innerRadius * Math.cos(theta);
+        const y = innerRadius * Math.sin(theta);
+        points.push(new THREE.Vector2(x, y));
+      }
+
+      const shape = new THREE.Shape(points);
+      const extrudeSettings = { steps: 1, depth: lamThickness * 0.95, bevelEnabled: false };
+      const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      const curvedSegment = new THREE.Mesh(geometry, red);
+      curvedSegment.position.z = -lamThickness / 2;
+
+      segmentGroup.add(curvedSegment);
+      segmentGroup.rotation.z = angle;
+      return segmentGroup;
+    }
+
+    function addWindingToArm(arm, turns = 19, radius = 0.19, tubeRadius = 0.03) {
+      const armLength = arm.geometry.parameters.width;
+      const windingGroup = new THREE.Group();
+      windingGroup.userData = { info: componentsInfo.windings };
+
+      class SpiralCurve extends THREE.Curve {
+        constructor(length, turns, radius) {
+          super();
+          this.length = length;
+          this.turns = turns;
+          this.radius = radius;
+        }
+
+        getPoint(t) {
+          const angle = t * this.turns * Math.PI * 2;
+          const x = -this.length / 2 + t * this.length;
+          const y = Math.sin(angle) * this.radius;
+          const z = Math.cos(angle) * this.radius;
+          return new THREE.Vector3(x, y, z);
+        }
+      }
+
+      const curve = new SpiralCurve(armLength, turns, radius);
+      const geometry = new THREE.TubeGeometry(curve, 200, tubeRadius, 8, false);
+      const mesh = new THREE.Mesh(geometry, copper);
+
+      windingGroup.add(mesh);
+      arm.add(windingGroup);
+      return windingGroup;
+    }
+
+    function createCentralConnector(thickness) {
+      const connectorGroup = new THREE.Group();
+      const centralCylinder = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.25, 0.25, lamThickness, 24),
+        connectorMaterial
+      );
+      centralCylinder.rotation.x = Math.PI / 2;
+      connectorGroup.add(centralCylinder);
+
+      for (let i = 0; i < 3; i++) {
+        const angle = (i / 3) * Math.PI * 2;
+        const x = 0.6 * Math.cos(angle);
+        const y = 0.6 * Math.sin(angle);
+
+        const armLength = 0.6;
+        const arm = new THREE.Mesh(
+          new THREE.BoxGeometry(armLength, 0.4, thickness),
+          connectorMaterial
+        );
+        arm.position.set(x * 0.6, y * 0.6, 0);
+        arm.rotation.z = angle;
+
+        const winding = addWindingToArm(arm);
+        connectorGroup.add(arm);
+      }
+      return connectorGroup;
+    }
+
+    const middleSection = new THREE.Group();
+    middleSection.userData = { info: componentsInfo.laminations };
+
+    for (let i = 0; i < lamCount; i++) {
+      const lamGroup = new THREE.Group();
+      const connector = createCentralConnector(lamThickness * 0.95);
+      connector.position.z = -lamThickness / 2;
+      lamGroup.add(connector);
+
+      for (let angle = 0; angle < Math.PI * 2; angle += (Math.PI * 2) / 3) {
+        const segment = createCurvedRotorSegment(angle);
+        lamGroup.add(segment);
+      }
+
+      lamGroup.position.z = -totalLength / 2 + i * lamThickness;
+      middleSection.add(lamGroup);
+    }
+
+    middleSection.position.z = -0.5;
+    rotorCore.add(middleSection);
+    rotorGroup.add(rotorCore);
+
+    // Commutator
+    const commutator = new THREE.Group();
+    commutator.userData = { info: componentsInfo.commutator };
+    rotorGroup.add(commutator);
+
+    const commBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.6, 0.6, 0.75, 24),
+      dark
+    );
+    commBase.rotation.x = Math.PI / 2;
+    commutator.add(commBase);
+
+    const segmentCount = 12;
+    const commRadius = 0.6;
+    const segmentHeight = 0.75;
+    const segmentThickness = 0.01;
+    const segmentAngle = (Math.PI * 2) / segmentCount;
+    const segmentArc = segmentAngle * 0.8;
+
+    for (let i = 0; i < segmentCount; i++) {
+      const startAngle = i * segmentAngle - segmentArc / 2;
+      const endAngle = i * segmentAngle + segmentArc / 2;
+
+      const shape = new THREE.Shape();
+      const outerRadius = commRadius + segmentThickness;
+      const innerRadius = commRadius;
+
+      shape.moveTo(innerRadius * Math.cos(startAngle), innerRadius * Math.sin(startAngle));
+      shape.lineTo(outerRadius * Math.cos(startAngle), outerRadius * Math.sin(startAngle));
+
+      const points = [];
+      const segments = 16;
+      for (let j = 0; j <= segments; j++) {
+        const theta = startAngle + (endAngle - startAngle) * (j / segments);
+        points.push(new THREE.Vector2(outerRadius * Math.cos(theta), outerRadius * Math.sin(theta)));
+      }
+      shape.splineThru(points);
+
+      shape.lineTo(innerRadius * Math.cos(endAngle), innerRadius * Math.sin(endAngle));
+
+      const innerPoints = [];
+      for (let j = segments; j >= 0; j--) {
+        const theta = startAngle + (endAngle - startAngle) * (j / segments);
+        innerPoints.push(new THREE.Vector2(innerRadius * Math.cos(theta), innerRadius * Math.sin(theta)));
+      }
+      shape.splineThru(innerPoints);
+
+      const extrudeSettings = { steps: 1, depth: segmentHeight, bevelEnabled: false };
+      const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      const segment = new THREE.Mesh(geometry, commutatorPlateMaterial);
+      segment.position.z = -segmentHeight / 2;
+
+      commutator.add(segment);
+    }
+
+    commutator.position.z = 1.5;
+
+    // Brush Assembly
+    const brushAssembly = new THREE.Group();
+    brushAssembly.userData = { info: componentsInfo.brushes };
+    statorGroup.add(brushAssembly);
+
+    function createBrush(angle) {
+      const brushGroup = new THREE.Group();
+      const brush = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.25, 0.4),
+        brushMaterial
+      );
+      brush.position.z = -0.0;
+      brushGroup.add(brush);
+
+      const radius = 0.75;
+      brushGroup.position.set(
+        radius * Math.cos(angle),
+        radius * Math.sin(angle),
+        1.5
+      );
+      brushGroup.rotation.z = angle;
+      return brushGroup;
+    }
+
+    const brush1 = createBrush(0);
+    const brush2 = createBrush(Math.PI);
+    brushAssembly.add(brush1);
+    brushAssembly.add(brush2);
+
+    // DC Motor Physics Parameters
+    const dcMotorParams = {
+      Ra: 1.0,
+      La: 0.01,
+      Kt: 0.5,
+      Ke: 0.5,
+      J: 0.02,
+      B: 0.1,
+      omega: 0,
+      current: 0,
+      voltage: 12,
+      loadTorque: 1.0,
+      timeStep: 0.01
+    };
+
+    // Controls setup
+    const voltageControl = document.getElementById('voltage');
+    const loadControl = document.getElementById('load');
+    const voltageDisplay = document.getElementById('voltage-value');
+    const loadDisplay = document.getElementById('load-value');
+    const rpmDisplay = document.getElementById('rpm-display');
+    const currentDisplay = document.getElementById('current-display');
+
+    voltageControl.addEventListener('input', function() {
+      dcMotorParams.voltage = parseFloat(this.value);
+      voltageDisplay.textContent = dcMotorParams.voltage.toFixed(1) + 'V';
+    });
+
+    loadControl.addEventListener('input', function() {
+      dcMotorParams.loadTorque = parseFloat(this.value);
+      loadDisplay.textContent = dcMotorParams.loadTorque.toFixed(1) + ' N·m';
+    });
+
+    renderer.domElement.addEventListener('mousemove', onMouseMove);
+
+    function onMouseMove(event) {
+      mouse.x = ((event.clientX - 250) / (window.innerWidth - 250)) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(scene.children, true);
+
+      if (intersects.length > 0) {
+        let currentObj = intersects[0].object;
+        let found = false;
+
+        while (currentObj && !found) {
+          if (currentObj.userData && currentObj.userData.info) {
+            const info = currentObj.userData.info;
+            partNameElement.textContent = info.name;
+            partDescriptionElement.textContent = info.description;
+            partInfoPanel.style.display = 'block';
+            found = true;
+          } else {
+            currentObj = currentObj.parent;
+          }
+        }
+
+        if (!found) {
+          partInfoPanel.style.display = 'none';
+        }
+      } else {
+        partInfoPanel.style.display = 'none';
+      }
+    }
+
+    function updateMotorDynamics() {
+      const {Ra, La, Kt, Ke, J, B, omega, current, voltage, loadTorque, timeStep} = dcMotorParams;
+      const backEMF = Ke * omega;
+      const currentDerivative = (voltage - backEMF - Ra * current) / La;
+      dcMotorParams.current += currentDerivative * timeStep;
+      const motorTorque = Kt * dcMotorParams.current;
+      const netTorque = motorTorque - loadTorque - B * omega;
+      const angularAcceleration = netTorque / J;
+      dcMotorParams.omega += angularAcceleration * timeStep;
+
+      if (dcMotorParams.omega < 0) {
+        dcMotorParams.omega = 0;
+        dcMotorParams.current = 0;
+      }
+
+      const rpm = dcMotorParams.omega * (60 / (2 * Math.PI));
+      rpmDisplay.textContent = rpm.toFixed(0) + ' RPM';
+      currentDisplay.textContent = dcMotorParams.current.toFixed(2) + ' A';
+
+      return dcMotorParams.omega * timeStep;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const rotationSpeed = updateMotorDynamics();
+      rotorGroup.rotation.z += rotationSpeed;
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = (window.innerWidth - 250) / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth - 250, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
