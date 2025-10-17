@@ -82,9 +82,46 @@
       margin: 0;
       font-size: 14px;
     }
+    #menu-toggle {
+      display: none;
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      padding: 10px 15px;
+      background: #2a2a2a;
+      border: 1px solid #555;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    @media (max-width: 768px) {
+      #menu-toggle {
+        display: block;
+      }
+      #sidebar {
+        position: fixed;
+        left: -250px;
+        top: 0;
+        height: 100vh;
+        z-index: 999;
+        transition: left 0.3s ease;
+      }
+      #sidebar.active {
+        left: 0;
+      }
+      #main-content {
+        width: 100%;
+      }
+      #info {
+        top: 60px;
+      }
+    }
   </style>
 </head>
 <body>
+  <button id="menu-toggle">☰ Menu</button>
   <div id="container">
     <div id="sidebar">
       <div id="controls">
@@ -125,15 +162,20 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+    // Helper function to get canvas width based on screen size
+    function getCanvasWidth() {
+      return window.innerWidth <= 768 ? window.innerWidth : window.innerWidth - 250;
+    }
+
     // Main scene setup
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1a1a1a);
 
-    const camera = new THREE.PerspectiveCamera(75, (window.innerWidth - 250) / window.innerHeight, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(75, getCanvasWidth() / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 4, 12);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth - 250, window.innerHeight);
+    renderer.setSize(getCanvasWidth(), window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('main-content').appendChild(renderer.domElement);
 
@@ -439,7 +481,8 @@
     renderer.domElement.addEventListener('mousemove', onMouseMove);
 
     function onMouseMove(event) {
-      mouse.x = ((event.clientX - 250) / (window.innerWidth - 250)) * 2 - 1;
+      const offsetX = window.innerWidth <= 768 ? 0 : 250;
+      mouse.x = ((event.clientX - offsetX) / getCanvasWidth()) * 2 - 1;
       mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
@@ -501,10 +544,27 @@
     }
     animate();
 
+    // Mobile menu toggle
+    const menuToggle = document.getElementById('menu-toggle');
+    const sidebar = document.getElementById('sidebar');
+    
+    menuToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('active');
+    });
+
+    // Close sidebar when clicking outside on mobile
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth <= 768) {
+        if (!sidebar.contains(e.target) && !menuToggle.contains(e.target) && sidebar.classList.contains('active')) {
+          sidebar.classList.remove('active');
+        }
+      }
+    });
+
     window.addEventListener('resize', () => {
-      camera.aspect = (window.innerWidth - 250) / window.innerHeight;
+      camera.aspect = getCanvasWidth() / window.innerHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth - 250, window.innerHeight);
+      renderer.setSize(getCanvasWidth(), window.innerHeight);
     });
   </script>
 </body>
